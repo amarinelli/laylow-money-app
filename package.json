@@ -1,0 +1,17 @@
+{
+  "name": "laylow-money-app",
+  "version": "1.0.0",
+  "description": "Laylow money management app",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Adam Marinelli",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.18.0",
+    "body-parser": "^1.18.3",
+    "dotenv": "^6.1.0",
+    "express": "^4.16.4"
+  }
+}
