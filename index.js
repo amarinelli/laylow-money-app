@@ -19,24 +19,66 @@ app.use(bodyParser.json());
 
 app.get('/', (req, res) => res.send('Laylow Brewery'))
 
-app.post('/deposit', function (req, res) {
+app.post('/cash', function (req, res) {
+
+    console.log("\nSlash Command\n");
+
     console.log(req.body);
     res.send("").status(200);
 
     let parseText = parseCommand(req.body.text);
 
+    if (parseText.error) {
+        postMessage(req.body.response_url, `_${parseText.error}. Please try again._`)
+        throw new Error(parseText.error)
+    }
+
     let deposit = parseText.deposit;
     let operator = parseText.operator;
     let reason = parseText.reason;
 
-    // Find the current balance from the Slack channel
     let ts = JSON.parse(fs.readFileSync('./config.json')).ts;
 
-    axios.post("https://slack.com/api/conversations.history", querystring.stringify({
-        latest: ts,
-        oldest: ts,
-        inclusive: 1,
-        limit: 1,
+    getPrevBalance(token, ts, ts, 1, 1, channel)
+        .then(response => {
+            console.log(response.data);
+
+            let prevBalance = Number(response.data.messages[0].text.replace(/[^0-9]/g, '')); // Leave only digits
+            let result = calcResult(deposit, operator, prevBalance);
+
+            let summaryText = `<@${req.body.user_id}> ${operator}ed \`$${deposit}\`.  The reason was: _${reason}_`;
+
+            postMessage(req.body.response_url, summaryText, "in_channel")
+                .then(response => {
+                    console.log(response.data);
+                    let newBalanceText = `The current balance is: *$${result}*`;
+
+                    postMessage(req.body.response_url, newBalanceText, "in_channel")
+                        .then(response => {
+                            console.log(response.data);
+                        })
+                        .catch(error => {
+                            console.log(error.response.data);
+                        });
+                })
+                .catch(error => {
+                    console.log(error.response.data);
+                });
+        })
+        .catch(error => {
+            console.log(error.response.data);
+        });
+})
+
+let getPrevBalance = (token, latest, oldest, inclusive, limit, channel) => {
+
+    console.log("\nConversations History\n");
+
+    return axios.post("https://slack.com/api/conversations.history", querystring.stringify({
+        latest: latest,
+        oldest: oldest,
+        inclusive: inclusive,
+        limit: limit,
         channel: channel
     }), {
             headers: {
@@ -45,25 +87,7 @@ app.post('/deposit', function (req, res) {
                 "Accept": "application/json; charset=utf-8"
             }
         })
-        .then(response => {
-            console.log(response.data);
-
-            let prevBalance = Number(response.data.messages[0].text.replace(/[^0-9]/g, '')); // Leave only digits
-            let result = calcResult(deposit, operator, prevBalance);
-
-            let summaryText = `<@${req.body.user_id}> ${operator}ed \`$${deposit}\`.  The reason was: _${reason}_`;
-            postMessage(req.body.response_url, summaryText);
-
-            let newBalanceText = `The current balance is: *$${result}*`
-            let message = postMessage(req.body.response_url, newBalanceText);
-
-            console.log(message);
-
-        })
-        .catch(error => {
-            console.log(error.response.data);
-        });
-})
+}
 
 let parseCommand = (commandText) => {
 
@@ -77,6 +101,21 @@ let parseCommand = (commandText) => {
     }
 
     let depositText = valueList[0];
+    let deposit = depositText.replace(/[^0-9]/g, ''); // Leave only digits
+
+    if (deposit === "") {
+        return {
+            error: "The input did not start with a number"
+        }
+    }
+
+    let operator;
+    if (depositText.includes("-")) {
+        operator = "subtract";
+
+    } else {
+        operator = "add";
+    }
 
     // Handle no reason provided which means one array element
     let reason;
@@ -85,15 +124,6 @@ let parseCommand = (commandText) => {
         reason = "(None provided)"
     } else {
         reason = valueList[1];
-    }
-    let deposit = depositText.replace(/[^0-9]/g, ''); // Leave only digits 
-
-    let operator;
-    if (depositText.includes("-")) {
-        operator = "subtract";
-
-    } else {
-        operator = "add";
     }
 
     return {
@@ -104,6 +134,7 @@ let parseCommand = (commandText) => {
 }
 
 let calcResult = (deposit, operator, prevBalance) => {
+
     if (operator == "add") {
         return prevBalance + deposit
     } else {
@@ -111,23 +142,39 @@ let calcResult = (deposit, operator, prevBalance) => {
     }
 }
 
-let postMessage = (responseUrl, text) => {
+let postMessage = (responseUrl, text, response_type) => {
 
-    axios.post(responseUrl, {
+    console.log("\nPost Message\n");
+
+    return axios.post(responseUrl, {
         channel: channel,
-        text: text
+        text: text,
+        response_type: response_type
     }, {
             headers: {
                 "Content-Type": "application/json; charset=utf-8"
             }
         })
+}
+
+let postEphemeral = (text, user, as_user) => {
+
+    console.log("\nPost Ephemeral\n");
+
+    axios.post("https://slack.com/api/chat.postEphemeral", {
+        channel: channel,
+        text: text,
+        user: user,
+        as_user: as_user
+    }, {
+            headers: {
+                "Content-Type": "application/json; charset=utf-8",
+                "Authorization": `Bearer ${token}`,
+            }
+        })
         .then(response => {
             console.log(response.data);
-            return response.data
         })
-        .catch(error => {
-            console.log(error.response);
-        });
 }
 
 app.listen(port, () => console.log(`Listening on port ${port}!`));
