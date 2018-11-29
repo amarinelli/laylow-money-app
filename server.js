@@ -51,14 +51,22 @@ app.post('/cash', function (req, res) {
 
                     let summaryText = `<@${req.body.user_id}> ${operator}ed \`$${deposit}\`.  The reason was: _${reason}_`;
 
-                    postMessage(req.body.response_url, summaryText, "in_channel")
+                    postMessage(token, channel, summaryText, false)
                         .then(response => {
                             console.log(response.data);
                             let newBalanceText = `The current balance is: *$${result}*`;
 
-                            postMessage(req.body.response_url, newBalanceText, "in_channel")
+                            postMessage(token, channel, newBalanceText, false)
                                 .then(response => {
                                     console.log(response.data);
+
+                                    updateMessage(token, channel, response.data.ts, balance_ts_ts)
+                                        .then(response => {
+                                            console.log(response.data);
+                                        })
+                                        .catch(error => {
+                                            console.log(error.response.data);
+                                        });
                                 })
                                 .catch(error => {
                                     console.log(error.response.data);
@@ -168,17 +176,36 @@ let calcResult = (deposit, operator, prevBalance) => {
     }
 }
 
-let postMessage = (responseUrl, text, response_type) => {
+let postMessage = (token, channel, text, as_user) => {
 
     console.log("\nPost Message\n");
 
-    return axios.post(responseUrl, {
+    return axios.post("https://slack.com/api/chat.postMessage", {
         channel: channel,
         text: text,
-        response_type: response_type
+        as_user: as_user
     }, {
             headers: {
-                "Content-Type": "application/json; charset=utf-8"
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json; charset=utf-8",
+                "Accept": "application/json; charset=utf-8"
+            }
+        })
+}
+
+let updateMessage = (token, channel, text, ts) => {
+
+    console.log("\nUpdate Message\n");
+
+    return axios.post("https://slack.com/api/chat.update", {
+        channel: channel,
+        text: text,
+        ts: ts
+    }, {
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json; charset=utf-8",
+                "Accept": "application/json; charset=utf-8"
             }
         })
 }
@@ -194,8 +221,8 @@ let postEphemeral = (text, user, as_user) => {
         as_user: as_user
     }, {
             headers: {
-                "Content-Type": "application/json; charset=utf-8",
                 "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/json; charset=utf-8"
             }
         })
         .then(response => {
