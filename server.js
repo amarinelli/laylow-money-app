@@ -1,5 +1,4 @@
 // Import modules
-const fs = require('fs');
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -8,6 +7,7 @@ const querystring = require('querystring');
 require('dotenv').config()
 const token = process.env.TOKEN;
 const channel = process.env.CHANNEL;
+const balance_ts_ts = process.env.TIMESTAMP;
 
 const app = express()
 const port = 4390
@@ -37,25 +37,32 @@ app.post('/cash', function (req, res) {
     let operator = parseText.operator;
     let reason = parseText.reason;
 
-    let ts = JSON.parse(fs.readFileSync('./config.json')).ts;
-
-    getPrevBalance(token, ts, ts, 1, 1, channel)
+    getPrevBalanceTimestamp(token, balance_ts_ts, balance_ts_ts, 1, 1, channel)
         .then(response => {
             console.log(response.data);
+            balance_ts = response.data.messages[0].text
 
-            let prevBalance = Number(response.data.messages[0].text.replace(/[^0-9]/g, '')); // Leave only digits
-            let result = calcResult(deposit, operator, prevBalance);
-
-            let summaryText = `<@${req.body.user_id}> ${operator}ed \`$${deposit}\`.  The reason was: _${reason}_`;
-
-            postMessage(req.body.response_url, summaryText, "in_channel")
+            getPrevBalance(token, balance_ts, balance_ts, 1, 1, channel)
                 .then(response => {
                     console.log(response.data);
-                    let newBalanceText = `The current balance is: *$${result}*`;
 
-                    postMessage(req.body.response_url, newBalanceText, "in_channel")
+                    let prevBalance = Number(response.data.messages[0].text.replace(/[^0-9]/g, '')); // Leave only digits
+                    let result = calcResult(deposit, operator, prevBalance);
+
+                    let summaryText = `<@${req.body.user_id}> ${operator}ed \`$${deposit}\`.  The reason was: _${reason}_`;
+
+                    postMessage(req.body.response_url, summaryText, "in_channel")
                         .then(response => {
                             console.log(response.data);
+                            let newBalanceText = `The current balance is: *$${result}*`;
+
+                            postMessage(req.body.response_url, newBalanceText, "in_channel")
+                                .then(response => {
+                                    console.log(response.data);
+                                })
+                                .catch(error => {
+                                    console.log(error.response.data);
+                                });
                         })
                         .catch(error => {
                             console.log(error.response.data);
@@ -69,6 +76,25 @@ app.post('/cash', function (req, res) {
             console.log(error.response.data);
         });
 })
+
+let getPrevBalanceTimestamp = (token, latest, oldest, inclusive, limit, channel) => {
+
+    console.log("\nConversations History\n");
+
+    return axios.post("https://slack.com/api/conversations.history", querystring.stringify({
+        latest: latest,
+        oldest: oldest,
+        inclusive: inclusive,
+        limit: limit,
+        channel: channel
+    }), {
+            headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json; charset=utf-8"
+            }
+        })
+}
 
 let getPrevBalance = (token, latest, oldest, inclusive, limit, channel) => {
 
